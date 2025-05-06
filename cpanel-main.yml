@@ -1,0 +1,80 @@
+# GitHub Action Workflow File for Rect App Sonarqube scanning & Deployment on Shared Hosting with cPanel
+
+on:
+  pull_request:
+    types:
+      - closed
+
+name: 🚀 Sonarqube Scan & Deploy website on Shared Hosting 🚀
+
+jobs:
+  sonar-scanner:
+    name: 🔍 SonarQube Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build React app (optional but recommended for completeness)
+        run: npm run build
+
+      - name: Download SonarQube Scanner CLI
+        run: |
+          wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+          unzip sonar-scanner-cli-5.0.1.3006-linux.zip
+          mv sonar-scanner-5.0.1.3006-linux sonar-scanner
+
+      - name: Run SonarQube Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          PROJECT_KEY: ${{ secrets.PROJECT_KEY }}
+          HOST_URL: ${{ secrets.HOST_URL }}
+        run: |
+          ./sonar-scanner/bin/sonar-scanner \
+            -Dsonar.projectKey=$PROJECT_KEY \
+            -Dsonar.sources=src \
+            -Dsonar.language=js \
+            -Dsonar.host.url=$HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN \
+            -Dsonar.exclusions=node_modules/**,build/**,dist/**,public/** \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+  web-deploy:
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.title, 'codingcad-deploy')
+
+    name: 🌍 Deploy to Shared Hosting Development Host Environment
+    needs: sonar-scanner
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚚 Get latest code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Use Node.js 20
+        uses: actions/setup-node@v2
+        with:
+          node-version: "20"
+
+      - name: ⬇️ Install Dependencies
+        run: npm install
+
+      - name: 🔨 Build Project
+        run: npm run build
+
+      - name: 📂 Sync files with cPanel Host File Manager
+        uses: SamKirkland/FTP-Deploy-Action@4.1.0
+        with:
+          server: ${{ secrets.ftp_server }}
+          username: ${{ secrets.ftp_name }}
+          password: ${{ secrets.ftp_password }}
+          local-dir: ./dist/
+          exclude: ride.projects-codingcad.store/.htaccess
+
